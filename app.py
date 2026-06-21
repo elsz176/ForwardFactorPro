@@ -7,6 +7,7 @@ import math
 import time
 import altair as alt
 from scipy.stats import norm
+import concurrent.futures  # Required for the accelerated Screener
 
 st.set_page_config(page_title="Forward Factor Pro", layout="wide", initial_sidebar_state="collapsed")
 
@@ -14,147 +15,142 @@ st.set_page_config(page_title="Forward Factor Pro", layout="wide", initial_sideb
 # 🎨 CUSTOM CSS: INSTITUTIONAL UI OVERHAUL
 # ==========================================
 st.markdown("""
-    <style>
-    /* Global Theme & Background */
-    .stApp { 
-        background-color: #0A0D14 !important; 
-        color: #E2E8F0 !important;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    
-    /* Hide Default Clutter */
-    #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    /* Typography Overhauls */
-    h1 { color: #FFFFFF !important; font-weight: 800 !important; letter-spacing: -1px; }
-    h2, h3 { color: #F8FAFC !important; font-weight: 600 !important; }
-    p, span, label { color: #94A3B8 !important; }
-    
-    /* 🎛️ Hyper-Intuitive Input Boxes */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea {
-        background-color: #121621 !important;
-        border: 1px solid #2A3143 !important;
-        color: #FFFFFF !important;
-        border-radius: 8px !important;
-        padding: 12px 15px !important;
-        font-size: 15px !important;
-        transition: all 0.3s ease-in-out !important;
-        box-shadow: inset 0 2px 4px rgba(0,0,0,0.2) !important;
-    }
-    
-    /* Input Focus Glow */
-    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
-        border-color: #FF4B00 !important;
-        box-shadow: 0 0 0 3px rgba(255, 75, 0, 0.25), inset 0 2px 4px rgba(0,0,0,0.2) !important;
-        outline: none !important;
-    }
+<style>
+/* Global Theme & Background */
+.stApp {
+background-color: #0A0D14 !important;
+color: #E2E8F0 !important;
+font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+/* Hide Default Clutter */
+#MainMenu {visibility: hidden;}
+header {visibility: hidden;}
+footer {visibility: hidden;}
+/* Typography Overhauls */
+h1 { color: #FFFFFF !important; font-weight: 800 !important; letter-spacing: -1px; }
+h2, h3 { color: #F8FAFC !important; font-weight: 600 !important; }
+p, span, label { color: #94A3B8 !important; }
+/* 🎛️ Hyper-Intuitive Input Boxes */
+.stTextInput input, .stNumberInput input, .stTextArea textarea {
+background-color: #121621 !important;
+border: 1px solid #2A3143 !important;
+color: #FFFFFF !important;
+border-radius: 8px !important;
+padding: 12px 15px !important;
+font-size: 15px !important;
+transition: all 0.3s ease-in-out !important;
+box-shadow: inset 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+/* Input Focus Glow */
+.stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
+border-color: #FF4B00 !important;
+box-shadow: 0 0 0 3px rgba(255, 75, 0, 0.25), inset 0 2px 4px rgba(0,0,0,0.2) !important;
+outline: none !important;
+}
 
-    /* Primary Action Buttons */
-    .stButton>button {
-        background: linear-gradient(135deg, #FF4B00 0%, #D43F00 100%) !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 8px !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.5px;
-        padding: 12px 24px !important;
-        width: 100%;
-        transition: all 0.2s ease-in-out !important;
-        box-shadow: 0 4px 15px rgba(255, 75, 0, 0.3) !important;
-    }
-    .stButton>button:hover { 
-        transform: translateY(-2px) !important; 
-        box-shadow: 0 6px 20px rgba(255, 75, 0, 0.4) !important;
-        background: linear-gradient(135deg, #FF5B1A 0%, #E64400 100%) !important;
-    }
+/* Primary Action Buttons */
+.stButton>button {
+background: linear-gradient(135deg, #FF4B00 0%, #D43F00 100%) !important;
+color: #FFFFFF !important;
+border: none !important;
+border-radius: 8px !important;
+font-weight: 700 !important;
+letter-spacing: 0.5px;
+padding: 12px 24px !important;
+width: 100%;
+transition: all 0.2s ease-in-out !important;
+box-shadow: 0 4px 15px rgba(255, 75, 0, 0.3) !important;
+}
+.stButton>button:hover {
+transform: translateY(-2px) !important;
+box-shadow: 0 6px 20px rgba(255, 75, 0, 0.4) !important;
+background: linear-gradient(135deg, #FF5B1A 0%, #E64400 100%) !important;
+}
 
-    /* 📊 Metric Cards (Glassmorphism) */
-    div[data-testid="stMetric"] {
-        background: linear-gradient(145deg, #141925 0%, #0D1017 100%);
-        border: 1px solid #2A3143;
-        border-radius: 12px;
-        padding: 20px 25px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-        transition: transform 0.2s ease, border-color 0.2s ease;
-    }
-    div[data-testid="stMetric"]:hover {
-        transform: translateY(-3px);
-        border-color: #FF4B00;
-    }
-    div[data-testid="stMetricValue"] { 
-        color: #FFFFFF !important; 
-        font-size: 2rem !important; 
-        font-weight: 700 !important;
-    }
-    div[data-testid="stMetricDelta"] { font-weight: 600 !important; }
+/* 📊 Metric Cards (Glassmorphism) */
+div[data-testid="stMetric"] {
+background: linear-gradient(145deg, #141925 0%, #0D1017 100%);
+border: 1px solid #2A3143;
+border-radius: 12px;
+padding: 20px 25px;
+box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+transition: transform 0.2s ease, border-color 0.2s ease;
+}
+div[data-testid="stMetric"]:hover {
+transform: translateY(-3px);
+border-color: #FF4B00;
+}
+div[data-testid="stMetricValue"] {
+color: #FFFFFF !important;
+font-size: 2rem !important;
+font-weight: 700 !important;
+}
+div[data-testid="stMetricDelta"] { font-weight: 600 !important; }
 
-    /* 📁 Custom Tab Navigation */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 12px;
-        background-color: transparent;
-        border-bottom: 2px solid #1E2433;
-        padding-bottom: 5px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #121621;
-        border-radius: 8px 8px 0 0;
-        padding: 12px 24px;
-        color: #94A3B8;
-        border: 1px solid #2A3143;
-        border-bottom: none;
-        transition: all 0.2s ease;
-        font-weight: 600;
-    }
-    .stTabs [data-baseweb="tab"]:hover {
-        color: #FFFFFF;
-        background-color: #1A202F;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #FF4B00 !important;
-        color: #FFFFFF !important;
-        border-color: #FF4B00 !important;
-        box-shadow: 0 -4px 15px rgba(255, 75, 0, 0.2);
-    }
+/* 📁 Custom Tab Navigation */
+.stTabs [data-baseweb="tab-list"] {
+gap: 12px;
+background-color: transparent;
+border-bottom: 2px solid #1E2433;
+padding-bottom: 5px;
+}
+.stTabs [data-baseweb="tab"] {
+background-color: #121621;
+border-radius: 8px 8px 0 0;
+padding: 12px 24px;
+color: #94A3B8;
+border: 1px solid #2A3143;
+border-bottom: none;
+transition: all 0.2s ease;
+font-weight: 600;
+}
+.stTabs [data-baseweb="tab"]:hover {
+color: #FFFFFF;
+background-color: #1A202F;
+}
+.stTabs [aria-selected="true"] {
+background-color: #FF4B00 !important;
+color: #FFFFFF !important;
+border-color: #FF4B00 !important;
+box-shadow: 0 -4px 15px rgba(255, 75, 0, 0.2);
+}
 
-    /* Signal Cards */
-    .signal-card-green {
-        background: linear-gradient(135deg, #062615 0%, #0A1410 100%);
-        border: 1px solid #10B981;
-        border-left: 6px solid #10B981;
-        border-radius: 10px; padding: 25px; color: white; margin-top: 15px;
-        box-shadow: 0 10px 25px rgba(16, 185, 129, 0.15);
-    }
-    .signal-card-neutral {
-        background: linear-gradient(145deg, #141925 0%, #0D1017 100%);
-        border: 1px solid #2A3143;
-        border-left: 6px solid #475569;
-        border-radius: 10px; padding: 25px; margin-top: 15px;
-    }
-    
-    /* Native Container Styling for Double Calendar */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        border: 1px solid #2A3143 !important;
-        background-color: #121621 !important;
-        border-radius: 12px !important;
-        padding: 15px !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
-    }
-    
-    /* Dataframes */
-    [data-testid="stDataFrame"] {
-        border-radius: 12px;
-        overflow: hidden;
-        border: 1px solid #2A3143;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-    }
-    </style>
+/* Signal Cards */
+.signal-card-green {
+background: linear-gradient(135deg, #062615 0%, #0A1410 100%);
+border: 1px solid #10B981;
+border-left: 6px solid #10B981;
+border-radius: 10px; padding: 25px; color: white; margin-top: 15px;
+box-shadow: 0 10px 25px rgba(16, 185, 129, 0.15);
+}
+.signal-card-neutral {
+background: linear-gradient(145deg, #141925 0%, #0D1017 100%);
+border: 1px solid #2A3143;
+border-left: 6px solid #475569;
+border-radius: 10px; padding: 25px; margin-top: 15px;
+}
+/* Native Container Styling for Double Calendar */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+border: 1px solid #2A3143 !important;
+background-color: #121621 !important;
+border-radius: 12px !important;
+padding: 15px !important;
+box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+}
+/* Dataframes */
+[data-testid="stDataFrame"] {
+border-radius: 12px;
+overflow: hidden;
+border: 1px solid #2A3143;
+box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+}
+</style>
 """, unsafe_allow_html=True)
 
 # ==========================================
 # CORE QUANTITATIVE FUNCTIONS (WITH CACHING)
 # ==========================================
+
 def get_dte(expiration_date_str):
     exp_date = datetime.strptime(expiration_date_str, '%Y-%m-%d').date()
     today = date.today()
@@ -221,7 +217,6 @@ def fetch_next_earnings(tkr_obj):
                         dt = pd.to_datetime(d).tz_localize(None).date()
                         if dt >= today: future_dates.append(dt)
         except: pass
-        
     if future_dates:
         return min(future_dates)
     return None
@@ -235,15 +230,12 @@ def fetch_ticker_data(ticker, target_front, target_back):
         except: return None
 
     next_earnings = fetch_next_earnings(tkr)
-        
     options_dates = tkr.options
     if not options_dates: return None
     dates_with_dte = [{'date': d, 'dte': get_dte(d)} for d in options_dates if get_dte(d) > 0]
-    
     if len(dates_with_dte) < 2: return None
     front_exp = min(dates_with_dte, key=lambda x: abs(x['dte'] - target_front))
     back_exp = min(dates_with_dte, key=lambda x: abs(x['dte'] - target_back))
-    
     if front_exp['date'] == back_exp['date']:
         dates_with_dte.remove(front_exp)
         if dates_with_dte: back_exp = min(dates_with_dte, key=lambda x: abs(x['dte'] - target_back))
@@ -269,26 +261,50 @@ def fetch_ticker_data(ticker, target_front, target_back):
         'b_dte': back_exp['dte'], 'b_date': back_exp['date'], 'b_iv': b_iv, 'b_strike': b_strike, 'b_bid': b_bid, 'b_ask': b_ask, 'b_oi': b_oi
     }
 
+# 🔥 OPTIMIZED TERM STRUCTURE FETCH FUNCTION
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_term_structure(ticker_symbol, current_price):
     tkr = yf.Ticker(ticker_symbol)
     ts_data = []
     
-    for exp_date in tkr.options:
-        dte = get_dte(exp_date)
+    options_dates = list(tkr.options)
+    if not options_dates:
+        return pd.DataFrame()
         
-        # Hard limit to save heavy API calls and compute time
-        if dte > 400:
+    # 1. Filter out expired dates
+    valid_dates = [d for d in options_dates if get_dte(d) > 0]
+    
+    # 2. Isolate dates up to the 180 DTE horizon
+    dates_under_180 = [d for d in valid_dates if get_dte(d) <= 180]
+    
+    # 3. Apply the limits (12 chains max)
+    if len(dates_under_180) > 12:
+        # Space out exactly 12 chains across the 180 DTE horizon to map the curve accurately
+        indices = np.linspace(0, len(dates_under_180) - 1, 12, dtype=int)
+        selected_dates = [dates_under_180[i] for i in indices]
+    else:
+        # If 12 or fewer chains under 180 DTE, just get up to 12 chains total
+        selected_dates = valid_dates[:12]
+        
+    # 4. Fetch data only for our highly curated list
+    for exp_date in selected_dates:
+        dte = get_dte(exp_date)
+        try:
+            calls = tkr.option_chain(exp_date).calls
+            if not calls.empty:
+                calls['distance'] = abs(calls['strike'] - current_price)
+                atm_call = calls.loc[calls['distance'].idxmin()]
+                iv = atm_call['impliedVolatility']
+                
+                if iv > 0: 
+                    ts_data.append({
+                        'DTE': dte, 
+                        'Expiration': format_nice_date(exp_date), 
+                        'IV (%)': round(iv * 100, 2)
+                    })
+        except: 
             continue
             
-        if dte > 0:
-            try:
-                calls = tkr.option_chain(exp_date).calls
-                if not calls.empty:
-                    calls['distance'] = abs(calls['strike'] - current_price)
-                    iv = calls.loc[calls['distance'].idxmin()]['impliedVolatility']
-                    if iv > 0: ts_data.append({'DTE': dte, 'Expiration': format_nice_date(exp_date), 'IV (%)': round(iv * 100, 2)})
-            except: continue
     return pd.DataFrame(ts_data)
 
 def calculate_ff(f_iv_dec, b_iv_dec, f_dte, b_dte):
@@ -347,10 +363,8 @@ def fetch_double_calendar_data(ticker, target_front, target_back):
 
         b_chain = tkr.option_chain(back_exp['date'])
         b_calls, b_puts = b_chain.calls, b_chain.puts
-        
         b_call_match = b_calls[b_calls['strike'] == call_strike]
         b_put_match = b_puts[b_puts['strike'] == put_strike]
-        
         if b_call_match.empty or b_put_match.empty: return None
         b_call, b_put = b_call_match.iloc[0], b_put_match.iloc[0]
 
@@ -374,7 +388,6 @@ if 't1_bdte' not in st.session_state: st.session_state.t1_bdte = 60
 if 't1_fiv' not in st.session_state: st.session_state.t1_fiv = 45.0
 if 't1_biv' not in st.session_state: st.session_state.t1_biv = 35.0
 if 't1_fetched' not in st.session_state: st.session_state.t1_fetched = False
-
 if 'dc_p_f_iv' not in st.session_state: st.session_state.dc_p_f_iv = 45.0
 if 'dc_p_b_iv' not in st.session_state: st.session_state.dc_p_b_iv = 35.0
 if 'dc_c_f_iv' not in st.session_state: st.session_state.dc_c_f_iv = 45.0
@@ -398,9 +411,8 @@ with tab1:
     tick = col1.text_input("Underlying Asset", value="SPY", key="t1_tick").upper()
     tf = col2.number_input("Target Front DTE", value=30, key="t1_tf")
     tb = col3.number_input("Target Back DTE", value=60, key="t1_tb")
-    
     with col4:
-        st.write("") 
+        st.write("")
         st.write("")
         if st.button("Execute Data Pipeline", key="t1_btn"):
             with st.spinner("Executing..."):
@@ -415,13 +427,12 @@ with tab1:
                     st.session_state.t1_fiv = float(d['f_iv'] * 100)
                     st.session_state.t1_biv = float(d['b_iv'] * 100)
                     st.session_state.t1_fetched = True
-                else: 
+                else:
                     st.error("Data pipeline failed. Ticker may be invalid or options chain is empty.")
 
     if st.session_state.t1_fetched:
         d = st.session_state.t1_data
         st.write("---")
-        
         # 📏 Height-Synced Metric Cards (Using Ghost Deltas)
         colA, colB, colC = st.columns([1, 2, 2])
         colA.metric(f"Spot Price ({tick})", f"${d['price']:.2f}", delta=" ", delta_color="off")
@@ -435,7 +446,6 @@ with tab1:
             colC.metric("Regime Risk", "N/A", delta=" ", delta_color="off")
             
         st.write("---")
-        
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"### Front Period (T1)")
@@ -443,7 +453,6 @@ with tab1:
             st.markdown(f"<p style='margin-top: 0px;'>Bid/Ask: ${d['f_bid']:.2f}-${d['f_ask']:.2f} | OI: {d['f_oi']}</p>", unsafe_allow_html=True)
             f_dte_input = st.number_input("Front DTE", step=1, key="t1_fdte")
             f_iv_input = st.number_input("Front Implied Volatility (%)", step=0.1, format="%.2f", key="t1_fiv")
-            
         with col2:
             st.markdown(f"### Back Period (T2)")
             st.markdown(f"<p style='margin-bottom: 5px;'>Expiry: <strong style='color: white;'>{format_nice_date(d['b_date'])}</strong> | Strike: <strong style='color: white;'>${d['b_strike']}</strong></p>", unsafe_allow_html=True)
@@ -457,19 +466,19 @@ with tab1:
             st.markdown("<div class='signal-card-neutral'><h3>⚠️ Term Structure Inverted</h3><p>Unable to compute forward variance accurately.</p></div>", unsafe_allow_html=True)
         elif ff > 0.20:
             st.markdown(f"""
-                <div class='signal-card-green'>
-                    <h3 style='color: #10B981 !important; margin-bottom: 5px;'>🟢 Tactical Setup Identified</h3>
-                    <h1 style='color: white !important; font-size: 3rem; margin: 0px;'>{ff*100:.2f}% <span style='font-size: 1rem; color: #94A3B8; font-weight: 400;'>Forward Factor</span></h1>
-                    <p style='color: #A7F3D0; margin-top: 10px; font-weight: 600;'>Implied Forward Volatility is {fv*100:.2f}%.</p>
-                </div>
+            <div class='signal-card-green'>
+            <h3 style='color: #10B981 !important; margin-bottom: 5px;'>🟢 Tactical Setup Identified</h3>
+            <h1 style='color: white !important; font-size: 3rem; margin: 0px;'>{ff*100:.2f}% <span style='font-size: 1rem; color: #94A3B8; font-weight: 400;'>Forward Factor</span></h1>
+            <p style='color: #A7F3D0; margin-top: 10px; font-weight: 600;'>Implied Forward Volatility is {fv*100:.2f}%.</p>
+            </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown(f"""
-                <div class='signal-card-neutral'>
-                    <h3 style='color: #94A3B8 !important; margin-bottom: 5px;'>⚪ Standard Curve (Contango)</h3>
-                    <h1 style='color: white !important; font-size: 2.5rem; margin: 0px;'>{ff*100:.2f}% <span style='font-size: 1rem; color: #94A3B8; font-weight: 400;'>Forward Factor</span></h1>
-                    <p style='color: #94A3B8; margin-top: 10px;'>No actionable backwardation detected. Implied Fwd Vol: {fv*100:.2f}%.</p>
-                </div>
+            <div class='signal-card-neutral'>
+            <h3 style='color: #94A3B8 !important; margin-bottom: 5px;'>⚪ Standard Curve (Contango)</h3>
+            <h1 style='color: white !important; font-size: 2.5rem; margin: 0px;'>{ff*100:.2f}% <span style='font-size: 1rem; color: #94A3B8; font-weight: 400;'>Forward Factor</span></h1>
+            <p style='color: #94A3B8; margin-top: 10px;'>No actionable backwardation detected. Implied Fwd Vol: {fv*100:.2f}%.</p>
+            </div>
             """, unsafe_allow_html=True)
 
         st.write("---")
@@ -480,39 +489,39 @@ with tab1:
             
             if date.today() <= d['next_earnings'] <= b_date_obj:
                 st.markdown(f"""
-                    <div style='background-color:#1A0F14; padding: 15px 20px; border-radius: 8px; border-left: 4px solid #EF4444; border-top: 1px solid #2A3143; border-right: 1px solid #2A3143; border-bottom: 1px solid #2A3143;'>
-                        <p style='color:#FCA5A5 !important; margin:0;'><strong>⚠️ RISK DETECTED:</strong> Earnings scheduled for <strong>{formatted_earnings}</strong> (Falls before your Back Expiration).</p>
-                    </div>
+                <div style='background-color:#1A0F14; padding: 15px 20px; border-radius: 8px; border-left: 4px solid #EF4444; border-top: 1px solid #2A3143; border-right: 1px solid #2A3143; border-bottom: 1px solid #2A3143;'>
+                <p style='color:#FCA5A5 !important; margin:0;'><strong>⚠️ RISK DETECTED:</strong> Earnings scheduled for <strong>{formatted_earnings}</strong> (Falls before your Back Expiration).</p>
+                </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"""
-                    <div style='background-color:#062615; padding: 15px 20px; border-radius: 8px; border-left: 4px solid #10B981; border-top: 1px solid #2A3143; border-right: 1px solid #2A3143; border-bottom: 1px solid #2A3143;'>
-                        <p style='color:#A7F3D0 !important; margin:0;'><strong>✅ CLEAR:</strong> Next earnings on <strong>{formatted_earnings}</strong> (Falls AFTER your Back Expiration).</p>
-                    </div>
+                <div style='background-color:#062615; padding: 15px 20px; border-radius: 8px; border-left: 4px solid #10B981; border-top: 1px solid #2A3143; border-right: 1px solid #2A3143; border-bottom: 1px solid #2A3143;'>
+                <p style='color:#A7F3D0 !important; margin:0;'><strong>✅ CLEAR:</strong> Next earnings on <strong>{formatted_earnings}</strong> (Falls AFTER your Back Expiration).</p>
+                </div>
                 """, unsafe_allow_html=True)
         else:
             st.markdown(f"""
-                <div style='background-color:#121621; padding: 15px 20px; border-radius: 8px; border-left: 4px solid #475569; border-top: 1px solid #2A3143; border-right: 1px solid #2A3143; border-bottom: 1px solid #2A3143;'>
-                    <p style='color:#94A3B8 !important; margin:0;'><strong>ℹ️ INFO:</strong> No upcoming earnings date found for this asset.</p>
-                </div>
+            <div style='background-color:#121621; padding: 15px 20px; border-radius: 8px; border-left: 4px solid #475569; border-top: 1px solid #2A3143; border-right: 1px solid #2A3143; border-bottom: 1px solid #2A3143;'>
+            <p style='color:#94A3B8 !important; margin:0;'><strong>ℹ️ INFO:</strong> No upcoming earnings date found for this asset.</p>
+            </div>
             """, unsafe_allow_html=True)
             
         if not st.session_state.ts_df.empty:
             st.write("---")
             st.markdown("### 📉 Volatility Term Structure")
             chart = alt.Chart(st.session_state.ts_df).mark_line(
-                point=alt.OverlayMarkDef(color="#FF4B00", size=120, opacity=1, filled=True), 
-                color="#334155", 
+                point=alt.OverlayMarkDef(color="#FF4B00", size=120, opacity=1, filled=True),
+                color="#334155",
                 strokeWidth=2
             ).encode(
                 x=alt.X('DTE:Q', title='Days to Expiry (DTE)', scale=alt.Scale(zero=False), axis=alt.Axis(grid=False, labelColor="#94A3B8", titleColor="#94A3B8")),
-                y=alt.Y('IV (%):Q', title='Implied Volatility (%)', scale=alt.Scale(zero=False), axis=alt.Axis(grid=True, gridColor="#1E293B", labelColor="#94A3B8", titleColor="#94A3B8")), 
+                y=alt.Y('IV (%):Q', title='Implied Volatility (%)', scale=alt.Scale(zero=False), axis=alt.Axis(grid=True, gridColor="#1E293B", labelColor="#94A3B8", titleColor="#94A3B8")),
                 tooltip=['Expiration:N', 'DTE:Q', 'IV (%):Q']
             ).properties(height=350).configure_view(strokeWidth=0).interactive()
             st.altair_chart(chart, use_container_width=True)
 
 # ------------------------------------------
-# TAB 2: WATCHLIST SCREENER
+# TAB 2: WATCHLIST SCREENER (CONCURRENT PIPELINE)
 # ------------------------------------------
 with tab2:
     st.write("### ")
@@ -522,48 +531,74 @@ with tab2:
     with col_wl1: watchlist_input = st.text_input("Asset Watchlist:", value="SPY, QQQ, IWM, AAPL, MSFT, TSLA, NVDA, NKE")
     with col_wl2: scan_front = st.number_input("Target Front", value=30, key="scan_f")
     with col_wl3: scan_back = st.number_input("Target Back", value=60, key="scan_b")
-    
     with col_wl4:
         st.write("")
         st.write("")
+        
+        # --- Helper Function for Threading ---
+        def process_ticker(tick, target_front, target_back, min_oi, max_spread, hide_illiquid):
+            data = fetch_ticker_data(tick, target_front, target_back)
+            regime = fetch_volatility_regime(tick)
+            
+            if data:
+                f_mid = (data['f_bid'] + data['f_ask']) / 2
+                b_mid = (data['b_bid'] + data['b_ask']) / 2
+                f_spread_pct = ((data['f_ask'] - data['f_bid']) / f_mid * 100) if f_mid > 0 else 100.0
+                b_spread_pct = ((data['b_ask'] - data['b_bid']) / b_mid * 100) if b_mid > 0 else 100.0
+                
+                pass_liq = (data['f_oi'] >= min_oi and data['b_oi'] >= min_oi and f_spread_pct <= max_spread and b_spread_pct <= max_spread)
+                
+                if not (hide_illiquid and not pass_liq):
+                    return {
+                        "Asset": tick,
+                        "Status": "🟢 Liquid" if pass_liq else "🔴 Illiquid",
+                        "Price": f"${data['price']:.2f}",
+                        "Front DTE": data['f_dte'], "Back DTE": data['b_dte'],
+                        "Front IV (%)": float(data['f_iv'] * 100), "Back IV (%)": float(data['b_iv'] * 100),
+                        "HV Rank": regime['hv_rank'] if regime else np.nan
+                    }
+            return None
+        # --------------------------------------
+
         if st.button("Run Screener", type="primary"):
             tickers = [t.strip().upper() for t in watchlist_input.split(",") if t.strip()]
             if len(tickers) > 0:
                 results = []
                 bar = st.progress(0)
-                for i, tick in enumerate(tickers):
-                    # 🔥 INCREASED SLEEP TO PREVENT RATE LIMITING 🔥
-                    time.sleep(2.0) 
+                
+                # 🔥 CONCURRENT EXECUTION PIPELINE 🔥
+                # max_workers=5 speeds it up ~5x without triggering Yahoo Finance rate limits
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    # Map the function to all tickers simultaneously
+                    future_to_tick = {
+                        executor.submit(
+                            process_ticker, 
+                            tick, scan_front, scan_back, 
+                            st.session_state.min_oi, 
+                            st.session_state.max_spread, 
+                            st.session_state.hide_illiquid
+                        ): tick for tick in tickers
+                    }
                     
-                    data = fetch_ticker_data(tick, scan_front, scan_back)
-                    regime = fetch_volatility_regime(tick)
-                    if data:
-                        f_mid = (data['f_bid'] + data['f_ask']) / 2
-                        b_mid = (data['b_bid'] + data['b_ask']) / 2
-                        f_spread_pct = ((data['f_ask'] - data['f_bid']) / f_mid * 100) if f_mid > 0 else 100.0
-                        b_spread_pct = ((data['b_ask'] - data['b_bid']) / b_mid * 100) if b_mid > 0 else 100.0
+                    # Process results as they complete
+                    completed = 0
+                    for future in concurrent.futures.as_completed(future_to_tick):
+                        res = future.result()
+                        if res:
+                            results.append(res)
                         
-                        pass_liq = (data['f_oi'] >= st.session_state.min_oi and data['b_oi'] >= st.session_state.min_oi and f_spread_pct <= st.session_state.max_spread and b_spread_pct <= st.session_state.max_spread)
-                        
-                        if not (st.session_state.hide_illiquid and not pass_liq):
-                            results.append({
-                                "Asset": tick,
-                                "Status": "🟢 Liquid" if pass_liq else "🔴 Illiquid",
-                                "Price": f"${data['price']:.2f}",
-                                "Front DTE": data['f_dte'], "Back DTE": data['b_dte'],
-                                "Front IV (%)": float(data['f_iv'] * 100), "Back IV (%)": float(data['b_iv'] * 100),
-                                "HV Rank": regime['hv_rank'] if regime else np.nan
-                            })
-                    bar.progress((i + 1) / len(tickers))
+                        completed += 1
+                        bar.progress(completed / len(tickers))
+                
                 bar.empty()
                 if results: st.session_state.wl_df = pd.DataFrame(results)
                 else: st.session_state.wl_df = pd.DataFrame()
 
     st.write("##### Liquidity Engine Constraints")
     f_col1, f_col2, f_col3 = st.columns([1, 1, 1.5])
-    with f_col1: 
+    with f_col1:
         st.session_state.min_oi = st.number_input("Minimum Open Interest:", value=500, step=100)
-    with f_col2: 
+    with f_col2:
         st.session_state.max_spread = st.number_input("Max Bid/Ask Spread (%):", value=15.0, step=1.0)
     with f_col3:
         st.write("")
@@ -587,15 +622,15 @@ with tab2:
         def highlight_ff(val):
             try:
                 val_float = float(val)
-                if val_float > 0: 
+                if val_float > 0:
                     return 'color: #10B981; font-weight: bold;'
-                elif val_float < 0: 
+                elif val_float < 0:
                     return 'color: #EF4444; font-weight: bold;'
                 return 'color: #94A3B8;'
             except: return ''
 
         styled_df = calc_df.style.map(highlight_ff, subset=['FF (%)']).format({
-            'Front IV (%)': "{:.2f}%", 'Back IV (%)': "{:.2f}%", 'HV Rank': "{:.0f}", 
+            'Front IV (%)': "{:.2f}%", 'Back IV (%)': "{:.2f}%", 'HV Rank': "{:.0f}",
             'Fwd Vol (%)': "{:.2f}%", 'FF (%)': "{:.2f}%"
         })
         
@@ -616,43 +651,39 @@ with tab3:
         if st.button("Calculate B-S Skew", type="primary", key="dc_btn"):
             with st.spinner(f"Executing..."):
                 dc_data = fetch_double_calendar_data(dc_tick, dc_front, dc_back)
-                if dc_data: 
+                if dc_data:
                     st.session_state.dc_data = dc_data
                     st.session_state.dc_p_f_iv = float(dc_data['f_p_iv'] * 100)
                     st.session_state.dc_p_b_iv = float(dc_data['b_p_iv'] * 100)
                     st.session_state.dc_c_f_iv = float(dc_data['f_c_iv'] * 100)
                     st.session_state.dc_c_b_iv = float(dc_data['b_c_iv'] * 100)
                     st.session_state.dc_fetched = True
-                else: 
+                else:
                     st.error("Failed to map exact strikes across expirations.")
 
     if st.session_state.dc_fetched:
         dc = st.session_state.dc_data
         st.write("---")
-        
         m_col1, m_col2, m_col3 = st.columns([1, 1, 2])
         m_col1.metric(f"Market Price ({dc_tick})", f"${dc['price']:.2f}", delta=" ", delta_color="off")
         m_col2.metric(f"Treasury Yield", f"{dc['r_rate']*100:.2f}%", delta="Risk-Free Base", delta_color="off")
-        m_col3.write("") 
-        
+        m_col3.write("")
         st.write("---")
-        col_put, col_call = st.columns(2)
         
+        col_put, col_call = st.columns(2)
         with col_put:
             with st.container():
                 st.markdown(f"### 🔻 Put Wing (-35 Delta)")
                 st.markdown(f"<h4 style='color: #E2E8F0; margin-top: -10px; margin-bottom: 20px;'>Matched Strike: <span style='color: #FF4B00; font-size: 1.4rem;'>${dc['put_strike']}</span></h4>", unsafe_allow_html=True)
                 p_f_iv = st.number_input("Front Put IV (%)", step=0.1, key="dc_p_f_iv")
                 p_b_iv = st.number_input("Back Put IV (%)", step=0.1, key="dc_p_b_iv")
-                
                 st.write("---")
                 p_fv, p_ff = calculate_ff(p_f_iv/100, p_b_iv/100, dc['f_dte'], dc['b_dte'])
-                
-                if np.isnan(p_ff): 
+                if np.isnan(p_ff):
                     st.error("Inverted Term Structure")
-                elif p_ff > 0.2: 
+                elif p_ff > 0.2:
                     st.markdown(f"<div class='signal-card-green' style='margin-top:0;'><h3 style='color:#10B981 !important; margin:0;'>Put FF: {p_ff*100:.2f}% 🟢</h3></div>", unsafe_allow_html=True)
-                else: 
+                else:
                     st.markdown(f"<div class='signal-card-neutral' style='margin-top:0;'><h3 style='color:#94A3B8 !important; margin:0;'>Put FF: {p_ff*100:.2f}%</h3></div>", unsafe_allow_html=True)
 
         with col_call:
@@ -661,13 +692,11 @@ with tab3:
                 st.markdown(f"<h4 style='color: #E2E8F0; margin-top: -10px; margin-bottom: 20px;'>Matched Strike: <span style='color: #FF4B00; font-size: 1.4rem;'>${dc['call_strike']}</span></h4>", unsafe_allow_html=True)
                 c_f_iv = st.number_input("Front Call IV (%)", step=0.1, key="dc_c_f_iv")
                 c_b_iv = st.number_input("Back Call IV (%)", step=0.1, key="dc_c_b_iv")
-                
                 st.write("---")
                 c_fv, c_ff = calculate_ff(c_f_iv/100, c_b_iv/100, dc['f_dte'], dc['b_dte'])
-                
-                if np.isnan(c_ff): 
+                if np.isnan(c_ff):
                     st.error("Inverted Term Structure")
-                elif c_ff > 0.2: 
+                elif c_ff > 0.2:
                     st.markdown(f"<div class='signal-card-green' style='margin-top:0;'><h3 style='color:#10B981 !important; margin:0;'>Call FF: {c_ff*100:.2f}% 🟢</h3></div>", unsafe_allow_html=True)
-                else: 
+                else:
                     st.markdown(f"<div class='signal-card-neutral' style='margin-top:0;'><h3 style='color:#94A3B8 !important; margin:0;'>Call FF: {c_ff*100:.2f}%</h3></div>", unsafe_allow_html=True)
